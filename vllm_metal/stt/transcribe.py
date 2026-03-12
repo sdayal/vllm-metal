@@ -31,6 +31,7 @@ from vllm_metal.stt.config import (
     QWEN3_ASR_MAX_DECODE_TOKENS,
     WHISPER_MAX_DECODE_TOKENS,
     SpeechToTextConfig,
+    validate_language,
 )
 from vllm_metal.stt.protocol import TranscriptionSegment
 from vllm_metal.stt.whisper import WhisperConfig, WhisperModel
@@ -56,6 +57,12 @@ _MAX_PROMPT_TOKENS = 224
 
 # Regex to detect Whisper timestamp tokens like ``<|0.00|>``.
 _TIMESTAMP_RE = re.compile(r"<\|(\d+\.\d+)\|>")
+
+# Supported tasks for Whisper transcription requests.
+_WHISPER_TASKS = frozenset({"transcribe", "translate"})
+
+# Supported floating-point dtypes for STT model loading.
+_SUPPORTED_LOAD_DTYPES = frozenset({mx.float16, mx.float32, mx.bfloat16})
 
 
 # ===========================================================================
@@ -135,6 +142,8 @@ class WhisperTranscriber:
         Returns:
             :class:`TranscriptionResult` with text and optional segments.
         """
+        language, task = self._resolve_decode_options(language, task)
+
         if isinstance(audio, str):
             audio = load_audio(audio, sample_rate=SAMPLE_RATE)
         elif isinstance(audio, np.ndarray):
@@ -250,6 +259,31 @@ class WhisperTranscriber:
     def _get_token_id(self, token: str) -> int:
         """Resolve a special token string to its integer ID."""
         return self.tokenizer.convert_tokens_to_ids(token)
+
+    def _resolve_decode_options(
+        self,
+        language: str | None,
+        task: str,
+    ) -> tuple[str | None, str]:
+        """Validate and normalize task/language options for Whisper."""
+        task = task.strip().lower()
+        if task not in _WHISPER_TASKS:
+            supported = ", ".join(sorted(_WHISPER_TASKS))
+            raise ValueError(
+                f"Unsupported STT task: {task!r}. Must be one of {supported}."
+            )
+
+        if self.model.is_multilingual:
+            return validate_language(language, default=None), task
+
+        resolved_language = validate_language(language, default=None)
+        if task == "translate":
+            raise ValueError("English-only Whisper models do not support translation.")
+        if resolved_language not in (None, "en"):
+            raise ValueError(
+                "English-only Whisper models only support English transcription."
+            )
+        return resolved_language, task
 
     def _encode_prompt(self, prompt: str | None) -> list[int]:
         """Encode a user prompt into ``<|startofprev|>`` prefix tokens.
@@ -580,6 +614,15 @@ def _resolve_model_path(model_path: str | Path) -> Path:
     return model_path
 
 
+def _validate_load_dtype(dtype: mx.Dtype) -> None:
+    """Validate the floating-point dtype used for model loading."""
+    if dtype not in _SUPPORTED_LOAD_DTYPES:
+        names = ", ".join(sorted(str(d) for d in _SUPPORTED_LOAD_DTYPES))
+        raise TypeError(
+            f"Unsupported STT model dtype: {dtype!r}. Must be one of {names}."
+        )
+
+
 def load_model(model_path: str | Path, dtype: mx.Dtype = mx.float16):
     """Load an STT model from a local directory or HuggingFace repo.
 
@@ -597,14 +640,24 @@ def load_model(model_path: str | Path, dtype: mx.Dtype = mx.float16):
         ValueError: If the model type is unsupported or download fails.
         FileNotFoundError: If config.json or weight files are missing.
     """
+    if isinstance(model_path, str) and not model_path.strip():
+        raise ValueError(
+            "model_path must be a non-empty local path or HuggingFace repo ID."
+        )
+    _validate_load_dtype(dtype)
     model_path = _resolve_model_path(model_path)
     config_dict = _read_config(model_path)
     model_type = config_dict.get("model_type", "").lower()
 
     if model_type == "qwen3_asr":
         return _load_qwen3_asr_model(model_path, config_dict, dtype)
-    # Default to Whisper for backward compatibility
-    return _load_whisper_model(model_path, config_dict, dtype)
+    if model_type in ("", "whisper"):
+        # Default to Whisper for backward compatibility
+        return _load_whisper_model(model_path, config_dict, dtype)
+    raise ValueError(
+        f"Unsupported STT model_type: {model_type!r}. "
+        "Expected 'whisper' or 'qwen3_asr'."
+    )
 
 
 def _load_and_init_model(model, model_path: Path, config_dict: dict):
