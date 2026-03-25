@@ -15,6 +15,10 @@ from vllm_metal.paged_attention_common import find_attn_attr, find_layers, get_c
 
 logger = init_logger(__name__)
 
+# Default rope head dim for GLM/DeepSeek-V2 lineage models.
+# Used as fallback when qk_rope_head_dim is absent from model config.
+MLA_DEFAULT_QK_ROPE_HEAD_DIM = 64
+
 
 class MLAPagedAttentionWrapper(nn.Module):
     """Wraps an MLA attention module to use a paged latent cache.
@@ -219,7 +223,9 @@ class MLAPagedAttentionBackend:
                 continue
 
             setattr(
-                layer, attn_attr, MLAPagedAttentionWrapper(attn, layer_idx, latent_cache)
+                layer,
+                attn_attr,
+                MLAPagedAttentionWrapper(attn, layer_idx, latent_cache),
             )
             patched += 1
 

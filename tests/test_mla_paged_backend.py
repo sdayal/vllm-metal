@@ -11,7 +11,6 @@ import mlx.nn as nn
 import pytest
 
 import vllm_metal.paged_attention_common as pac
-
 from vllm_metal.mlx_backend.mla_cache import MLAPagedLatentCache
 from vllm_metal.paged_attention_backend.mla import (
     MLAPagedAttentionBackend,
@@ -225,10 +224,10 @@ class TestMLAPagedAttentionWrapperFallback:
 
 _HIDDEN = 32
 _NUM_HEADS = 2
-_NOPE_DIM = 8   # qk_nope_head_dim
-_ROPE_DIM = 4   # qk_rope_head_dim
-_KV_RANK = 16   # kv_lora_rank
-_V_DIM = 8      # v_head_dim
+_NOPE_DIM = 8  # qk_nope_head_dim
+_ROPE_DIM = 4  # qk_rope_head_dim
+_KV_RANK = 16  # kv_lora_rank
+_V_DIM = 8  # v_head_dim
 
 
 class _MinimalMLAInner(nn.Module):
@@ -290,7 +289,9 @@ class TestMLAPagedAttentionWrapperPagedPath:
             )
         )
 
-        out = wrapper(mx.random.normal((1, 1, _HIDDEN)).astype(mx.float16), mask=None, cache=None)
+        out = wrapper(
+            mx.random.normal((1, 1, _HIDDEN)).astype(mx.float16), mask=None, cache=None
+        )
         mx.eval(out)
 
         assert out.shape == (1, 1, _HIDDEN)
@@ -311,7 +312,9 @@ class TestMLAPagedAttentionWrapperPagedPath:
             )
         )
 
-        out = wrapper(mx.random.normal((1, 4, _HIDDEN)).astype(mx.float16), mask=None, cache=None)
+        out = wrapper(
+            mx.random.normal((1, 4, _HIDDEN)).astype(mx.float16), mask=None, cache=None
+        )
         mx.eval(out)
 
         assert out.shape == (1, 4, _HIDDEN)
@@ -332,7 +335,9 @@ class TestMLAPagedAttentionWrapperPagedPath:
             )
         )
 
-        wrapper(mx.random.normal((1, 1, _HIDDEN)).astype(mx.float16), mask=None, cache=None)
+        wrapper(
+            mx.random.normal((1, 1, _HIDDEN)).astype(mx.float16), mask=None, cache=None
+        )
 
         # block 0, position 2 should now hold the new latent
         written = cache.latent_caches[0][0, 2, :]
