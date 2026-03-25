@@ -232,9 +232,6 @@ class TestMLAPagedAttentionWrapperFallback:
         inner.assert_called_once_with(x, mask=mask, cache=cache)
 
 
-# ---------------------------------------------------------------------------
-# Paged path tests — small dims that exercise all shape paths without being slow
-# ---------------------------------------------------------------------------
 _HIDDEN = 32
 _NUM_HEADS = 2
 _NOPE_DIM = 8   # qk_nope_head_dim

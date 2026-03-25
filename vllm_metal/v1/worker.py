@@ -27,6 +27,8 @@ from vllm_metal.config import (
     PAGED_ATTENTION_OVERHEAD_BYTES,
     get_config,
 )
+from vllm_metal.paged_attention_backend.mha import MHAPagedAttentionBackend
+from vllm_metal.paged_attention_backend.mla import MLAPagedAttentionBackend
 from vllm_metal.platform import MetalPlatform
 from vllm_metal.stt.config import STT_SCHED_AVAILABLE_BYTES
 from vllm_metal.utils import set_wired_limit
@@ -169,8 +171,6 @@ class MetalWorker(WorkerBase):
         a configurable memory fraction, rather than blindly scaling from
         max_model_len.
         """
-        from vllm_metal.paged_attention_backend.mha import MHAPagedAttentionBackend
-
         runner = self.model_runner
         block_size = self.metal_config.block_size
 
@@ -261,8 +261,6 @@ class MetalWorker(WorkerBase):
             raise RuntimeError("KV cache dtype not initialized; runner.load_model()")
 
         if runner.is_mla:
-            from vllm_metal.paged_attention_backend.mla import MLAPagedAttentionBackend
-
             kv_lora_rank = int(runner.model_args["kv_lora_rank"])
             latent_dim = runner.mla_latent_dim  # kv_lora_rank + qk_rope_head_dim
             backend = MLAPagedAttentionBackend(

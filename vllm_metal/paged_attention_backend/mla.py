@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import math
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import mlx.core as mx
 import mlx.nn as nn
@@ -10,10 +10,8 @@ from mlx_lm.models.base import scaled_dot_product_attention
 from vllm.logger import init_logger
 
 from vllm_metal.metal_kernel_backend.packed_prefill_compat import apply_packed_rope
+from vllm_metal.mlx_backend.mla_cache import MLAPagedLatentCache
 from vllm_metal.paged_attention_common import find_layers_and_attr, get_context
-
-if TYPE_CHECKING:
-    from vllm_metal.mlx_backend.mla_cache import MLAPagedLatentCache
 
 logger = init_logger(__name__)
 
@@ -109,6 +107,7 @@ class MLAPagedAttentionWrapper(nn.Module):
         latent_cache.latent_caches[layer_idx] = flat.reshape(
             latent_cache.num_blocks, latent_cache.block_size, latent_cache.latent_dim
         )
+
         outputs = []
         for req_idx, (block_ids, ctx_len) in enumerate(
             zip(ctx.block_tables, ctx.context_lens, strict=True)
@@ -193,8 +192,6 @@ class MLAPagedAttentionBackend:
         return self._cache
 
     def initialize(self, num_blocks: int) -> None:
-        from vllm_metal.mlx_backend.mla_cache import MLAPagedLatentCache
-
         self._cache = MLAPagedLatentCache(
             num_layers=self._num_layers,
             kv_lora_rank=self._kv_lora_rank,
