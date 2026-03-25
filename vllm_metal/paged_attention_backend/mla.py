@@ -11,7 +11,7 @@ from vllm.logger import init_logger
 
 from vllm_metal.metal_kernel_backend.packed_prefill_compat import apply_packed_rope
 from vllm_metal.mlx_backend.mla_cache import MLAPagedLatentCache
-from vllm_metal.paged_attention_common import find_layers_and_attr, get_context
+from vllm_metal.paged_attention_common import find_attn_attr, find_layers, get_context
 
 logger = init_logger(__name__)
 
@@ -206,10 +206,13 @@ class MLAPagedAttentionBackend:
         return self._patch_model(model, cache)
 
     def _patch_model(self, model: Any, latent_cache: MLAPagedLatentCache) -> int:
-        layer_list, attn_attr = find_layers_and_attr(model)
         patched = 0
 
-        for layer_idx, layer in enumerate(layer_list):
+        for layer_idx, layer in enumerate(find_layers(model)):
+            attn_attr = find_attn_attr(layer)
+            if attn_attr is None:
+                continue
+
             attn = getattr(layer, attn_attr)
             if isinstance(attn, MLAPagedAttentionWrapper):
                 # Already patched — refresh cache reference (e.g. after re-initialisation)
