@@ -150,4 +150,3 @@ class TestPackedRoPE:
         assert q_out.shape == (1, 1, 5, 2)
         assert mx.allclose(q_out, mx.zeros_like(q_out)).item()
         assert mx.allclose(k_out, mx.zeros_like(k_out)).item()
-
