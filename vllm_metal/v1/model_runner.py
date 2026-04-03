@@ -1662,22 +1662,18 @@ class MetalModelRunner:
         scheduler_output: SchedulerOutput,
     ) -> None:
         """Classify cached requests into prefill continuation or decode work."""
-        decode_req_ids = list(cached_reqs.req_ids)
-        if not decode_req_ids:
+        if not cached_reqs.req_ids:
             return
 
         if self._paged_attention_backend is None:
-            batch.scheduled_cached_req_ids.extend(decode_req_ids)
-            for req_id in decode_req_ids:
+            batch.scheduled_cached_req_ids.extend(cached_reqs.req_ids)
+            for req_id in cached_reqs.req_ids:
                 state = self._request_states.get(req_id)
                 if state is not None:
                     batch.valid_decode_reqs.append((req_id, state))
             return
 
-        req_id_to_cached_idx = {
-            req_id: idx for idx, req_id in enumerate(cached_reqs.req_ids)
-        }
-        for req_id in decode_req_ids:
+        for idx, req_id in enumerate(cached_reqs.req_ids):
             state = self._request_states.get(req_id)
             if state is None:
                 logger.warning(
@@ -1689,12 +1685,8 @@ class MetalModelRunner:
                 continue
 
             if state.generated_tokens == 0:
-                idx = req_id_to_cached_idx.get(req_id)
-                if idx is not None and idx < len(cached_reqs.num_computed_tokens):
-                    computed_tokens = cached_reqs.num_computed_tokens[idx]
-                else:
-                    computed_tokens = self._paged_request_seq_lens.get(req_id, 0)
-                scheduled_tokens = scheduler_output.num_scheduled_tokens.get(req_id, 0)
+                computed_tokens = cached_reqs.num_computed_tokens[idx]
+                scheduled_tokens = scheduler_output.num_scheduled_tokens[req_id]
                 target_len = computed_tokens + scheduled_tokens
                 is_intermediate = target_len < len(state.token_ids)
                 output_idx = batch.add_output(req_id, [])
