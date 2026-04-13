@@ -644,7 +644,7 @@ class MetalModelRunner:
                         sc.recurrent_states[layer_idx] = rec
         return slot
 
-    def _gdn_free_slot(self, req_id: str) -> None:
+    def _gdn_free_slot(self, req_id: str, *, materialize_state: bool = True) -> None:
         """Release a GDN state pool slot.
 
         Materializes conv/recurrent state arrays to detach them from the
@@ -655,14 +655,19 @@ class MetalModelRunner:
         slot = self._gdn_req_to_slot.pop(req_id, None)
         if slot is None:
             return
-        # Materialize state arrays so the lazy graph does not grow
-        # unboundedly across requests.
-        backend = self._paged_attention_backend
-        if backend is not None and hasattr(backend, "_state_cache"):
-            sc = backend._state_cache
-            if sc is not None:
-                mx.eval(*sc.conv_states, *sc.recurrent_states)
+        if materialize_state:
+            self._gdn_materialize_state_cache()
         self._gdn_free_slots.append(slot)
+
+    def _gdn_materialize_state_cache(self) -> None:
+        """Materialize GDN state arrays to detach lazy graphs."""
+        backend = self._paged_attention_backend
+        if backend is None or not hasattr(backend, "_state_cache"):
+            return
+        sc = backend._state_cache
+        if sc is None:
+            return
+        mx.eval(*sc.conv_states, *sc.recurrent_states)
 
     def _extract_logits(self, model_output: Any) -> mx.array:
         """Extract logits from model output.
