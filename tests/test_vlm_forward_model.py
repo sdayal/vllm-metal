@@ -2,7 +2,7 @@
 """Unit tests for VLM text-only forward dispatch.
 
 Covers:
-- _vlm_text_model() helper (contiguous_cache module)
+- DefaultModelAdapter.text_model()
 - MetalModelRunner._forward_model property
 - PrefixCacheManager.restore_cache routing
 """
@@ -13,10 +13,10 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from tests.stub_runner import make_stub_runner
-from vllm_metal.v1.vlm_utils import _vlm_text_model
+from vllm_metal.v1.model_adapter import DefaultModelAdapter
 
 # ---------------------------------------------------------------------------
-# _vlm_text_model helper
+# DefaultModelAdapter.text_model helper
 # ---------------------------------------------------------------------------
 
 
@@ -24,11 +24,13 @@ class TestVlmTextModel:
     def test_returns_language_model_when_present(self) -> None:
         lang = object()
         vlm = SimpleNamespace(language_model=lang)
-        assert _vlm_text_model(vlm) is lang
+        adapter = DefaultModelAdapter()
+        assert adapter.text_model(vlm) is lang
 
     def test_returns_model_when_no_language_model(self) -> None:
         model = object()
-        assert _vlm_text_model(model) is model
+        adapter = DefaultModelAdapter()
+        assert adapter.text_model(model) is model
 
 
 # ---------------------------------------------------------------------------

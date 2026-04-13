@@ -36,12 +36,14 @@ class DefaultModelAdapter(ModelAdapter):
     """Default adapter implementation for known model quirks."""
 
     def should_force_text_backbone(self, hf_config: Any) -> bool:
+        """Return True for models that must load via mlx_lm (e.g. Gemma4)."""
         model_type = getattr(hf_config, "model_type", "")
         return model_type in _TEXT_BACKBONE_OVERRIDE_TYPES
 
     def resolve_max_head_dim(
         self, args: dict[str, Any], head_dim: int | None
     ) -> int | None:
+        """Handle models with larger full-attention head dims (Gemma4)."""
         global_head_dim = args.get("global_head_dim")
         if global_head_dim and head_dim:
             return max(int(head_dim), int(global_head_dim))
@@ -50,6 +52,7 @@ class DefaultModelAdapter(ModelAdapter):
     def require_uniform_kv_heads(
         self, args: dict[str, Any], num_kv_heads: int | None
     ) -> None:
+        """Reject models with variable KV head counts in paged attention."""
         global_kv_heads = args.get("num_global_key_value_heads")
         if (
             global_kv_heads
@@ -65,6 +68,7 @@ class DefaultModelAdapter(ModelAdapter):
             )
 
     def text_model(self, model: Any) -> Any:
+        """Return VLM text sub-model to avoid pixel_values/mask requirements."""
         if hasattr(model, "language_model"):
             return model.language_model
         return model

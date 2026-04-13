@@ -262,7 +262,7 @@ class MetalModelRunner:
         # Prefix cache for shared prompt reuse
         self._prefix_cache: PrefixCacheManager | None = None
         if _PREFIX_CACHE_ENABLED:
-            self._prefix_cache = PrefixCacheManager()
+            self._prefix_cache = PrefixCacheManager(model_adapter=self._model_adapter)
 
         # Paged attention state (set by worker when enabled)
         self._paged_attention_backend: PagedAttentionBackend | None = None
