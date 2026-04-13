@@ -42,7 +42,10 @@ from vllm.v1.sample.metadata import SamplingMetadata
 from vllm.v1.sample.sampler import Sampler
 
 from vllm_metal.config import get_config
-from vllm_metal.paged_attention_backend.hybrid import _build_linear_layer_spec
+from vllm_metal.paged_attention_backend.hybrid import (
+    HybridPagedAttentionBackend,
+    _build_linear_layer_spec,
+)
 from vllm_metal.paged_attention_backend.mla import MLA_DEFAULT_QK_ROPE_HEAD_DIM
 from vllm_metal.paged_attention_backend.protocol import PagedAttentionBackend
 from vllm_metal.paged_attention_common import (
@@ -632,24 +635,26 @@ class MetalModelRunner:
         # at free time to avoid mx.eval synchronisation issues.
         if reused:
             backend = self._paged_attention_backend
-            if backend is not None and hasattr(backend, "_state_cache"):
-                sc = backend._state_cache
-                if sc is not None:
-                    for layer_idx in range(sc.num_layers):
-                        conv = sc.conv_states[layer_idx]
-                        conv[slot] = mx.zeros_like(conv[slot])
-                        sc.conv_states[layer_idx] = conv
-                        rec = sc.recurrent_states[layer_idx]
-                        rec[slot] = mx.zeros_like(rec[slot])
-                        sc.recurrent_states[layer_idx] = rec
+            if not isinstance(backend, HybridPagedAttentionBackend):
+                raise RuntimeError("GDN slot allocation requires hybrid paged backend")
+            sc = backend._state_cache
+            if sc is None:
+                raise RuntimeError("GDN state cache is not initialized")
+            for layer_idx in range(sc.num_layers):
+                conv = sc.conv_states[layer_idx]
+                conv[slot] = mx.zeros_like(conv[slot])
+                sc.conv_states[layer_idx] = conv
+                rec = sc.recurrent_states[layer_idx]
+                rec[slot] = mx.zeros_like(rec[slot])
+                sc.recurrent_states[layer_idx] = rec
         return slot
 
     def _gdn_free_slot(self, req_id: str, *, materialize_state: bool = True) -> None:
         """Release a GDN state pool slot.
 
         If ``materialize_state`` is True, detaches conv/recurrent state
-        arrays from the lazy computation graph. Zeroing is deferred to
-        ``_gdn_alloc_slot`` right before reuse.
+        arrays from the lazy computation graph. Pass False if the caller
+        already materialized in the same scheduling step.
         """
         slot = self._gdn_req_to_slot.pop(req_id, None)
         if slot is None:
@@ -659,10 +664,10 @@ class MetalModelRunner:
         self._gdn_free_slots.append(slot)
 
     def _gdn_materialize_state_cache(self) -> None:
-        """Detach GDN state arrays from the lazy graph."""
+        """Detach GDN state arrays from the lazy graph to prevent growth."""
         backend = self._paged_attention_backend
-        if backend is None:
-            return
+        if not isinstance(backend, HybridPagedAttentionBackend):
+            raise RuntimeError("GDN state cache requires hybrid paged backend")
         sc = backend._state_cache
         if sc is None:
             raise RuntimeError("GDN state cache is not initialized")
