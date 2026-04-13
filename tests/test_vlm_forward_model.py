@@ -114,6 +114,6 @@ class TestRestoreCacheRouting:
         monkeypatch.setattr(
             "vllm_metal.v1.contiguous_cache.make_prompt_cache", fake_make_prompt_cache
         )
-        mgr = PrefixCacheManager.__new__(PrefixCacheManager)
+        mgr = PrefixCacheManager(max_bytes=1024)
         mgr.restore_cache(self._make_cached_prefix(), model=vlm, is_vlm=True)
         assert captured["model"] is lang
