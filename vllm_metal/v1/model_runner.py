@@ -1584,15 +1584,15 @@ class MetalModelRunner:
         if self._paged_attention_backend is not None and batch.has_paged_work():
             # Free GDN slots for finished requests BEFORE allocating new
             # ones, so slots can be reused within the same scheduling step.
-            # Conv/recurrent states are materialized per-layer in
-            # attention_linear.py, so the mx.eval in _gdn_free_slot is
-            # cheap (states already evaluated).  The _gdn_free_slot call
-            # in the later _cleanup_finished_requests is a no-op.
             if self.is_hybrid and scheduler_output.finished_req_ids:
+                materialized = False
                 for req_id in scheduler_output.finished_req_ids:
-                    slot = self._gdn_req_to_slot.pop(req_id, None)
-                    if slot is not None:
-                        self._gdn_free_slots.append(slot)
+                    if req_id not in self._gdn_req_to_slot:
+                        continue
+                    if not materialized:
+                        self._gdn_materialize_state_cache()
+                        materialized = True
+                    self._gdn_free_slot(req_id, materialize_state=False)
 
             prefill_pack = self._build_prefill_pack(batch)
             self._start_paged_forward(
