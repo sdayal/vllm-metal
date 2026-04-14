@@ -649,20 +649,6 @@ class MetalModelRunner:
                 sc.recurrent_states[layer_idx] = rec
         return slot
 
-    def _gdn_free_slot(self, req_id: str, *, materialize_state: bool = True) -> None:
-        """Release a GDN state pool slot.
-
-        If ``materialize_state`` is True, detaches conv/recurrent state
-        arrays from the lazy computation graph. Pass False if the caller
-        already materialized in the same scheduling step.
-        """
-        slot = self._gdn_req_to_slot.pop(req_id, None)
-        if slot is None:
-            return
-        if materialize_state:
-            self._gdn_materialize_state_cache()
-        self._gdn_free_slots.append(slot)
-
     def _gdn_materialize_state_cache(self) -> None:
         """Detach GDN state arrays from the lazy graph to prevent growth."""
         backend = self._paged_attention_backend
@@ -672,6 +658,20 @@ class MetalModelRunner:
         if sc is None:
             raise RuntimeError("GDN state cache is not initialized")
         mx.eval(*sc.conv_states, *sc.recurrent_states)
+
+    def _gdn_release_slots(self, req_ids: set[str]) -> None:
+        """Release finished GDN slots, materializing state once if needed."""
+        freed_slots: list[int] = []
+        for req_id in req_ids:
+            slot = self._gdn_req_to_slot.pop(req_id, None)
+            if slot is not None:
+                freed_slots.append(slot)
+
+        if not freed_slots:
+            return
+
+        self._gdn_materialize_state_cache()
+        self._gdn_free_slots.extend(freed_slots)
 
     def _extract_logits(self, model_output: Any) -> mx.array:
         """Extract logits from model output.
@@ -1536,7 +1536,8 @@ class MetalModelRunner:
 
             # Block freeing is handled by the scheduler's kv_cache_manager.
             self._paged_request_seq_lens.pop(req_id, None)
-            self._gdn_free_slot(req_id)
+
+        self._gdn_release_slots(finished_req_ids)
 
         self._finished_request_count += len(finished_req_ids)
         if self._finished_request_count < _CACHE_CLEAR_INTERVAL:
@@ -1589,14 +1590,7 @@ class MetalModelRunner:
             # Free GDN slots for finished requests BEFORE allocating new
             # ones, so slots can be reused within the same scheduling step.
             if self.is_hybrid and scheduler_output.finished_req_ids:
-                materialized = False
-                for req_id in scheduler_output.finished_req_ids:
-                    if req_id not in self._gdn_req_to_slot:
-                        continue
-                    if not materialized:
-                        self._gdn_materialize_state_cache()
-                        materialized = True
-                    self._gdn_free_slot(req_id, materialize_state=False)
+                self._gdn_release_slots(scheduler_output.finished_req_ids)
 
             prefill_pack = self._build_prefill_pack(batch)
             self._start_paged_forward(
