@@ -71,9 +71,7 @@ class ModelLifecycle:
             torch.empty(0, dtype=model_config.dtype)
         ).dtype
 
-    def _load_generation_model(
-        self, model_name: str, is_vlm: bool
-    ) -> tuple[Any, Any]:
+    def _load_generation_model(self, model_name: str, is_vlm: bool) -> tuple[Any, Any]:
         logger.info("Loading model: %s (VLM: %s)", model_name, is_vlm)
         start_time = time.time()
 

@@ -18,7 +18,6 @@ from typing import Any, Literal, NamedTuple, TypeAlias
 import mlx.core as mx
 import torch
 from mlx_lm import stream_generate
-
 from vllm.config import VllmConfig
 from vllm.logger import init_logger
 from vllm.sampling_params import SamplingParams
